@@ -3,6 +3,8 @@ import threading
 import time
 from queue import Queue, Empty
 from loguru import logger
+from aioconsole import ainput
+
 class Krem(threading.Thread):
 	def __init__(self, q):
 		threading.Thread.__init__(self, daemon=True, name='krem')
@@ -18,14 +20,14 @@ class Krem(threading.Thread):
 		logger.debug('Running in subtask')
 		count = 0
 		while True:
-			self.q.put_nowait({'subtask': count})
+			self.q.put_nowait({'source':'subtask', 'count': count})
 			await asyncio.sleep(1)
 			count += 1
 
 	def run(self) -> None:
 		while not self.kill:
 			#logger.debug(f'Krem {self.counter}')
-			self.q.put_nowait({'krem':self.counter})
+			self.q.put_nowait({'source':'krem', 'count':self.counter})
 			time.sleep(0.1)
 			self.counter += 1
 			if self.kill:
@@ -37,7 +39,7 @@ async def foo(q):
 	count = 0
 	while True:
 		#logger.debug(f'foo {count}')
-		q.put_nowait({'foo':count})
+		q.put_nowait({'source':'foo', 'count':count})
 		await asyncio.sleep(1)
 		count += 1
 	#return f'foocount{count}'
@@ -46,7 +48,7 @@ async def bar(q):
 	logger.debug('Running in bar')
 	count = 0
 	while True:
-		q.put_nowait({'bar':count})
+		q.put_nowait({'source':'bar', 'count':count})
 		#logger.debug(f'bar {count}')
 		await asyncio.sleep(2)
 		count += 1
@@ -55,6 +57,7 @@ async def bar(q):
 async def qmon(q):
 	logger.debug('qmon')
 	count = 0
+	stats = {}
 	while True:
 		c = None
 		try:
@@ -63,8 +66,25 @@ async def qmon(q):
 		except Empty:
 			pass
 		if c:
-			logger.info(f'qmon {c}')
+			if c.get('source') not in stats:
+				stats[c.get('source')] = 0
+			stats[c.get('source')] += c['count']
+			logger.info(f'qmon {stats}')
 		await asyncio.sleep(0)
+
+async def async_cli(q):
+	logger.debug('cli starting')
+	count = 0
+	while True:
+		c = None
+		try:
+			cmd = await ainput(">>> ")
+			if cmd[:1] == 'q':
+				break
+			await asyncio.sleep(0)
+		except Exception as e:
+			logger.error(f'Error: {type(e)} {e}')
+
 async def main():
 	q = Queue()
 	t = Krem(q)
@@ -76,6 +96,7 @@ async def main():
 			bartask = tg.create_task(bar(q))
 			qmontask = tg.create_task(qmon(q))
 			kremsubtask = tg.create_task(t.subtask())
+			cli_task = tg.create_task(async_cli(q))
 		#results = [footask.result(), bartask.result()]
 		#logger.info(f'asyncresults: {results}')
 	except KeyboardInterrupt as e:
