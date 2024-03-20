@@ -34,6 +34,43 @@ class Krem(threading.Thread):
 				break
 		#return f'kremcount{self.counter}'
 
+class Async_cli():
+	def __init__(self, q):
+		self.q = q
+		self.stats = {}
+
+	async def q_monitor(self):
+		logger.debug('qmon')
+		while True:
+			c = None
+			try:
+				c = self.q.get_nowait()
+				self.q.task_done()
+			except Empty:
+				pass
+			if c:
+				if c.get('source') not in self.stats:
+					self.stats[c.get('source')] = 0
+				self.stats[c.get('source')] += c['count']
+				# logger.info(f'qmon {self.stats}')
+			await asyncio.sleep(0)
+
+	async def run(self):
+		logger.debug('cli starting')
+		count = 0
+		while True:
+			c = None
+			try:
+				cmd = await ainput(">>> ")
+				if cmd[:1] == 'q':
+					break
+				if cmd[:1] == 's':
+					logger.debug(f'stats: {self.stats}')
+				await asyncio.sleep(0)
+			except Exception as e:
+				logger.error(f'Error: {type(e)} {e}')
+
+
 async def foo(q):
 	logger.debug('Running in foo')
 	count = 0
@@ -90,13 +127,16 @@ async def main():
 	t = Krem(q)
 	logger.debug(f'krem {t} {t.counter}')
 	kremtask = asyncio.create_task(asyncio.to_thread(t.run))
+	cli = Async_cli(q)
 	try:
 		async with asyncio.TaskGroup() as tg:
 			footask = tg.create_task(foo(q))
 			bartask = tg.create_task(bar(q))
-			qmontask = tg.create_task(qmon(q))
+			# qmontask = tg.create_task(qmon(q))
+			qmontask = tg.create_task(cli.q_monitor())
 			kremsubtask = tg.create_task(t.subtask())
-			cli_task = tg.create_task(async_cli(q))
+			#cli_task = tg.create_task(async_cli(q))
+			cli_task = tg.create_task(cli.run())
 		#results = [footask.result(), bartask.result()]
 		#logger.info(f'asyncresults: {results}')
 	except KeyboardInterrupt as e:
