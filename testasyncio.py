@@ -14,6 +14,14 @@ class Krem(threading.Thread):
 		self.kill = True
 		logger.debug(f'kremthread got do_kill {self} {self.is_alive()}')
 
+	async def subtask(self):
+		logger.debug('Running in subtask')
+		count = 0
+		while True:
+			self.q.put_nowait({'subtask': count})
+			await asyncio.sleep(1)
+			count += 1
+
 	def run(self) -> None:
 		while not self.kill:
 			#logger.debug(f'Krem {self.counter}')
@@ -67,6 +75,7 @@ async def main():
 			footask = tg.create_task(foo(q))
 			bartask = tg.create_task(bar(q))
 			qmontask = tg.create_task(qmon(q))
+			kremsubtask = tg.create_task(t.subtask())
 		#results = [footask.result(), bartask.result()]
 		#logger.info(f'asyncresults: {results}')
 	except KeyboardInterrupt as e:
